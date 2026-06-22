@@ -27,7 +27,7 @@ const statusColor: Record<string, { bg: string; text: string }> = {
 };
 
 export default function HomeScreen() {
-  const { user } = useAuth();
+  const { user, userLocation } = useAuth();
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#f8fafc" }}>
@@ -35,7 +35,7 @@ export default function HomeScreen() {
       <View style={{ backgroundColor: "#4338ca", paddingHorizontal: 24, paddingTop: 16, paddingBottom: 32 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <View>
-            <Text style={{ color: "#c7d2fe", fontSize: 13 }}>Good morning 👋</Text>
+            <Text style={{ color: "#c7d2fe", fontSize: 13 }}>{user ? `${user.name}` : ""}</Text>
             <Text style={{ color: "#fff", fontSize: 20, fontWeight: "700", marginTop: 2 }}>JBS Marketing</Text>
           </View>
           <TouchableOpacity style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" }}>
