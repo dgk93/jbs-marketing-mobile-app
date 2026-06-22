@@ -6,14 +6,13 @@ import { ActivityIndicator, View } from "react-native";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 
 function RootLayoutNav() {
-  const { session, loading } = useAuth();
+  const { session, loading, user, userLocation } = useAuth();
 
   useEffect(() => {
     console.log("[App] RootLayoutNav mounted");
   }, []);
 
   useEffect(() => {
-    console.log(`[App] Auth state changed — loading: ${loading}, session: ${session ? session.user.email : "null"}`);
     if (loading) return;
     if (session) {
       router.replace("/(tabs)/home");
