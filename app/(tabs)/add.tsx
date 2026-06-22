@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from "react-native";
+import { supabase } from "@/lib/supabase";
+import React, { use, useEffect, useState } from "react";
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Modal, FlatList, TouchableWithoutFeedback } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type LineItem = { id: string; name: string; qty: string; price: string };
@@ -15,11 +16,25 @@ export default function AddScreen() {
   const [itemPrice, setItemPrice] = useState("");
   const [itemStock, setItemStock] = useState("");
   const [itemCategory, setItemCategory] = useState("");
+  const [shopLocations, setShopLocations] = useState<{ id: number; location_name: string }[]>([]);
 
   const addLineItem = () => setLineItems((p) => [...p, { id: Date.now().toString(), name: "", qty: "1", price: "" }]);
   const removeLineItem = (id: string) => { if (lineItems.length > 1) setLineItems((p) => p.filter((i) => i.id !== id)); };
   const updateLineItem = (id: string, field: keyof LineItem, value: string) => setLineItems((p) => p.map((i) => i.id === id ? { ...i, [field]: value } : i));
   const total = lineItems.reduce((s, i) => s + (parseFloat(i.qty) || 0) * (parseFloat(i.price) || 0), 0);
+
+  async function fetchShopLocations() {
+    const { data, error } = await supabase.from("locations").select("*").eq("location_type", "shop");
+    if (error) {
+      console.error("Error fetching shop locations:", error);
+      return [];
+    }
+    return data;
+  }
+
+  useEffect(() => {
+    fetchShopLocations().then(setShopLocations);
+  }, []);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#f8fafc" }}>
@@ -39,7 +54,13 @@ export default function AddScreen() {
           {activeTab === "invoice" ? (
             <>
               <Text style={{ color: "#1f2937", fontWeight: "700", fontSize: 18, marginBottom: 16 }}>Invoice Details</Text>
-              <Field label="Select Shop *" value={customer} onChange={setCustomer} placeholder="Enter customer name" />
+              <SelectField
+                label="Select Shop *"
+                value={customer}
+                onSelect={(loc) => setCustomer(loc.location_name)}
+                placeholder="Select a shop"
+                options={shopLocations}
+              />
               <Field label="Phone Number" value={phone} onChange={setPhone} placeholder="+94 7X XXX XXXX" keyboardType="phone-pad" />
 
               <Text style={{ color: "#374151", fontWeight: "600", fontSize: 14, marginBottom: 12 }}>Line Items</Text>
@@ -105,6 +126,61 @@ export default function AddScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+function SelectField({ label, value, onSelect, placeholder, options }: {
+  label: string;
+  value: string;
+  onSelect: (item: { id: number; location_name: string }) => void;
+  placeholder: string;
+  options: { id: number; location_name: string }[];
+}) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <Text style={{ color: "#4b5563", fontSize: 13, fontWeight: "600", marginBottom: 8 }}>{label}</Text>
+      <TouchableOpacity
+        onPress={() => setVisible(true)}
+        style={{ backgroundColor: "#fff", borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}
+      >
+        <Text style={{ color: value ? "#1f2937" : "#9ca3af", fontSize: 15, flex: 1 }}>{value || placeholder}</Text>
+        <Text style={{ color: "#9ca3af", fontSize: 12 }}>▼</Text>
+      </TouchableOpacity>
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={() => setVisible(false)}>
+        <TouchableWithoutFeedback onPress={() => setVisible(false)}>
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", padding: 24 }}>
+            <TouchableWithoutFeedback>
+              <View style={{ backgroundColor: "#fff", borderRadius: 20, overflow: "hidden", maxHeight: 400 }}>
+                <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: "#f3f4f6", flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ fontWeight: "700", fontSize: 16, color: "#1f2937" }}>Select Shop</Text>
+                  <TouchableOpacity onPress={() => setVisible(false)}>
+                    <Text style={{ color: "#9ca3af", fontSize: 20, lineHeight: 22 }}>×</Text>
+                  </TouchableOpacity>
+                </View>
+                <FlatList
+                  data={options}
+                  keyExtractor={(item) => item.id.toString()}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      onPress={() => { onSelect(item); setVisible(false); }}
+                      style={{ paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: "#f9fafb", backgroundColor: value === item.location_name ? "#eef2ff" : "#fff" }}
+                    >
+                      <Text style={{ color: value === item.location_name ? "#4338ca" : "#1f2937", fontSize: 15, fontWeight: value === item.location_name ? "600" : "400" }}>
+                        {value === item.location_name ? "✓  " : "    "}{item.location_name}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  ListEmptyComponent={
+                    <Text style={{ padding: 24, color: "#9ca3af", textAlign: "center" }}>No shops available</Text>
+                  }
+                />
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+    </View>
   );
 }
 
