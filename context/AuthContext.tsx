@@ -28,7 +28,7 @@ export type UserLocation = {
 type AuthContextType = {
   session: Session | null;
   user: AppUser | null;
-  userLocation: UserLocation | null;
+  userLocations: UserLocation[];
   loading: boolean;
   signOut: () => Promise<void>;
 };
@@ -36,7 +36,7 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType>({
   session: null,
   user: null,
-  userLocation: null,
+  userLocations: [],
   loading: true,
   signOut: async () => {},
 });
@@ -51,27 +51,26 @@ async function fetchAppUser(email: string): Promise<AppUser | null> {
   return data as AppUser;
 }
 
-async function fetchUserLocation(userId: string): Promise<UserLocation | null> {
+async function fetchUserLocation(userId: string): Promise<UserLocation[]> {
   const { data, error } = await supabase
     .from('locations')
     .select('*')
-    .eq('user_id', userId)
-    .single();
-  if (error || !data) return null;
-  return data as UserLocation;
+    .eq('user_id', userId);
+  if (error || !data) return [];
+  return data as UserLocation[];
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<AppUser | null>(null);
-  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
+  const [userLocations, setUserLocations] = useState<UserLocation[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadUserData = async (email: string) => {
     const appUser = await fetchAppUser(email);
     if (appUser?.user_id) {
-      const location = await fetchUserLocation(appUser.user_id);
-      setUserLocation(location);
+      const locations = await fetchUserLocation(appUser.user_id);
+      setUserLocations(locations);
     }
     setUser(appUser);
   };
@@ -84,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await loadUserData(session.user.email);
       } else {
         setUser(null);
-        setUserLocation(null);
+        setUserLocations([]);
       }
       setLoading(false);
     });
@@ -96,7 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await loadUserData(session.user.email);
       } else {
         setUser(null);
-        setUserLocation(null);
+        setUserLocations([]);
       }
       setLoading(false);
     });
@@ -107,11 +106,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
-    setUserLocation(null);
+    setUserLocations([]);
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, userLocation, loading, signOut }}>
+    <AuthContext.Provider value={{ session, user, userLocations, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );

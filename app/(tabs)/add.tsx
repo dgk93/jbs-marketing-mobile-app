@@ -1,39 +1,238 @@
 import { supabase } from "@/lib/supabase";
-import React, { use, useEffect, useState } from "react";
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Modal, FlatList, TouchableWithoutFeedback } from "react-native";
+import { useAuth } from "@/context/AuthContext";
+import React, { useEffect, useState } from "react";
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Modal, FlatList, TouchableWithoutFeedback, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-type LineItem = { id: string; name: string; qty: string; price: string };
+type TempItem = { 
+  item_id: number; 
+  name: string; 
+  qty: number; 
+  price: number;
+  discount: number;
+  subtotal: number;
+};
+
+type ItemOption = { id: number; name: string; price: number };
 
 export default function AddScreen() {
+  const { userLocations } = useAuth();
   const [activeTab, setActiveTab] = useState<"invoice" | "item">("invoice");
-  const [customer, setCustomer] = useState("");
-  const [phone, setPhone] = useState("");
+  const [selectedShopId, setSelectedShopId] = useState<number | null>(null);
+  const [selectedShopName, setSelectedShopName] = useState("");
   const [notes, setNotes] = useState("");
-  const [lineItems, setLineItems] = useState<LineItem[]>([{ id: "1", name: "", qty: "1", price: "" }]);
+  const [tempItems, setTempItems] = useState<TempItem[]>([]);
+  const [currentItem, setCurrentItem] = useState({ item_id: 0, qty: "", discount: "" });
   const [itemName, setItemName] = useState("");
   const [itemCode, setItemCode] = useState("");
   const [itemPrice, setItemPrice] = useState("");
   const [itemStock, setItemStock] = useState("");
   const [itemCategory, setItemCategory] = useState("");
+  const [items, setItems] = useState<ItemOption[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [lorryLocation, setLorryLocation] = useState<{ id: number; location_name: string } | null>(null);
   const [shopLocations, setShopLocations] = useState<{ id: number; location_name: string }[]>([]);
 
-  const addLineItem = () => setLineItems((p) => [...p, { id: Date.now().toString(), name: "", qty: "1", price: "" }]);
-  const removeLineItem = (id: string) => { if (lineItems.length > 1) setLineItems((p) => p.filter((i) => i.id !== id)); };
-  const updateLineItem = (id: string, field: keyof LineItem, value: string) => setLineItems((p) => p.map((i) => i.id === id ? { ...i, [field]: value } : i));
-  const total = lineItems.reduce((s, i) => s + (parseFloat(i.qty) || 0) * (parseFloat(i.price) || 0), 0);
+  const total = tempItems.reduce((sum, item) => sum + item.subtotal, 0);
 
-  async function fetchShopLocations() {
-    const { data, error } = await supabase.from("locations").select("*").eq("location_type", "shop");
+  async function fetchItems() {
+    const { data, error } = await supabase.from("items").select("id, name, price");
     if (error) {
-      console.error("Error fetching shop locations:", error);
+      console.error("Error fetching items:", error);
       return [];
+    }
+    return data || [];
+  }
+
+  async function fetchLorryLocation() {
+    const { data, error } = await supabase.from("locations").select("id, location_name").eq("location_type", "lorry").limit(1).single();
+    if (error) {
+      console.error("Error fetching lorry location:", error);
+      return null;
     }
     return data;
   }
 
+  async function fetchShops() {
+    const { data, error } = await supabase.from("locations").select("id, location_name").eq("location_type", "shop");
+    if (error) {
+      console.error("Error fetching shops:", error);
+      return [];
+    }
+    return data || [];
+  }
+
+  const handleAddTempItem = () => {
+    if (!currentItem.item_id) {
+      Alert.alert("Validation", "Please select an item");
+      return;
+    }
+    if (!currentItem.qty || parseFloat(currentItem.qty) <= 0) {
+      Alert.alert("Validation", "Quantity must be greater than 0");
+      return;
+    }
+
+    const selectedItemData = items.find((i) => i.id === currentItem.item_id);
+    if (!selectedItemData) return;
+
+    const alreadyAdded = tempItems.find((t) => t.item_id === currentItem.item_id);
+    if (alreadyAdded) {
+      Alert.alert("Validation", "This item is already added");
+      return;
+    }
+
+    const qty = parseFloat(currentItem.qty);
+    const discount = parseFloat(currentItem.discount) || 0;
+    const price = selectedItemData.price;
+    const subtotal = (qty * price) - discount;
+
+    setTempItems((prev) => [
+      ...prev,
+      {
+        item_id: currentItem.item_id,
+        name: selectedItemData.name,
+        qty,
+        price,
+        discount,
+        subtotal,
+      },
+    ]);
+    setCurrentItem({ item_id: 0, qty: "", discount: "" });
+  };
+
+  const handleRemoveTempItem = (itemId: number) => {
+    setTempItems((prev) => prev.filter((t) => t.item_id !== itemId));
+  };
+
+  const upsertStockRecord = async ({ locationId, itemId, qty, stockAction }: { locationId: number; itemId: number; qty: number; stockAction: string }) => {
+    const { data: existingRows, error: existingError } = await supabase
+      .from("stocks")
+      .select("id, current_qty, created_at")
+      .eq("location_id", locationId)
+      .eq("item_id", itemId)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(1);
+
+    if (existingError) throw existingError;
+
+    const existing = existingRows?.[0] || null;
+    const previousQty = Number(existing?.current_qty || 0);
+    const currentQty = stockAction === "add" ? previousQty + qty : previousQty - qty;
+
+    if (existing) {
+      const { error: updateError } = await supabase
+        .from("stocks")
+        .update({
+          prevoius_qty: previousQty,
+          stock_action: stockAction,
+          transaction_qty: qty,
+          current_qty: currentQty,
+        })
+        .eq("location_id", locationId)
+        .eq("item_id", itemId);
+
+      if (updateError) throw updateError;
+    } else {
+      const { error: insertError } = await supabase.from("stocks").insert([
+        {
+          location_id: locationId,
+          item_id: itemId,
+          prevoius_qty: previousQty,
+          stock_action: stockAction,
+          transaction_qty: qty,
+          current_qty: currentQty,
+        },
+      ]);
+
+      if (insertError) throw insertError;
+    }
+  };
+
+  const handleSaveInvoice = async () => {
+    if (!selectedShopId) {
+      Alert.alert("Validation", "Please select a shop");
+      return;
+    }
+    if (tempItems.length === 0) {
+      Alert.alert("Validation", "Please add at least one item");
+      return;
+    }
+    if (!lorryLocation) {
+      Alert.alert("Error", "No lorry location found");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const totalPrice = tempItems.reduce((sum, item) => sum + item.subtotal, 0);
+
+      // Transaction type: OUT (id = 4 or 5 based on your setup - using 4 for "lorry to shop")
+      const transactionTypeId = 4;
+
+      // Insert transaction_inventory
+      const { data: transactionData, error: transactionError } = await supabase
+        .from("transaction_inventory")
+        .insert([
+          {
+            type_id: transactionTypeId,
+            total_price: totalPrice,
+            from_id: lorryLocation.id,
+            to_id: selectedShopId,
+          },
+        ])
+        .select("id")
+        .single();
+
+      if (transactionError) throw transactionError;
+
+      // Insert transaction_items with discount
+      const transactionItems = tempItems.map((item) => ({
+        item_id: item.item_id,
+        qty: item.qty,
+        discount: item.discount,
+        transaction_inventory_id: transactionData.id,
+      }));
+
+      const { error: itemError } = await supabase.from("transaction_items").insert(transactionItems);
+
+      if (itemError) throw itemError;
+
+      // Update stocks (reduce from lorry, add to shop)
+      for (const item of tempItems) {
+        await upsertStockRecord({
+          locationId: lorryLocation.id,
+          itemId: item.item_id,
+          qty: item.qty,
+          stockAction: "reduce",
+        });
+
+        await upsertStockRecord({
+          locationId: selectedShopId,
+          itemId: item.item_id,
+          qty: item.qty,
+          stockAction: "add",
+        });
+      }
+
+      Alert.alert("Success", "Invoice saved successfully!");
+      setSelectedShopId(null);
+      setSelectedShopName("");
+      setTempItems([]);
+      setCurrentItem({ item_id: 0, qty: "", discount: "" });
+      setNotes("");
+    } catch (err) {
+      console.error("Error saving invoice:", err);
+      Alert.alert("Error", "Failed to save invoice. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   useEffect(() => {
-    fetchShopLocations().then(setShopLocations);
+    fetchItems().then(setItems);
+    fetchLorryLocation().then(setLorryLocation);
+    fetchShops().then(setShopLocations);
   }, []);
 
   return (
@@ -54,51 +253,145 @@ export default function AddScreen() {
           {activeTab === "invoice" ? (
             <>
               <Text style={{ color: "#1f2937", fontWeight: "700", fontSize: 18, marginBottom: 16 }}>Invoice Details</Text>
+              
               <SelectField
                 label="Select Shop *"
-                value={customer}
-                onSelect={(loc) => setCustomer(loc.location_name)}
+                value={selectedShopName}
+                onSelect={(loc) => {
+                  setSelectedShopId(loc.id);
+                  setSelectedShopName(loc.location_name);
+                }}
                 placeholder="Select a shop"
                 options={shopLocations}
               />
-              <Field label="Phone Number" value={phone} onChange={setPhone} placeholder="+94 7X XXX XXXX" keyboardType="phone-pad" />
 
-              <Text style={{ color: "#374151", fontWeight: "600", fontSize: 14, marginBottom: 12 }}>Line Items</Text>
-              <View style={{ backgroundColor: "#fff", borderRadius: 16, overflow: "hidden", marginBottom: 12 }}>
-                <View style={{ flexDirection: "row", paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#f9fafb", borderBottomWidth: 1, borderBottomColor: "#f3f4f6" }}>
-                  <Text style={{ flex: 1, color: "#9ca3af", fontSize: 11, fontWeight: "600" }}>ITEM</Text>
-                  <Text style={{ width: 50, color: "#9ca3af", fontSize: 11, fontWeight: "600", textAlign: "center" }}>QTY</Text>
-                  <Text style={{ width: 70, color: "#9ca3af", fontSize: 11, fontWeight: "600", textAlign: "right" }}>PRICE</Text>
-                  <View style={{ width: 32 }} />
-                </View>
-                {lineItems.map((item, idx) => (
-                  <View key={item.id} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: idx < lineItems.length - 1 ? 1 : 0, borderBottomColor: "#f9fafb", gap: 8 }}>
-                    <TextInput style={{ flex: 1, color: "#1f2937", fontSize: 14 }} placeholder="Item name" placeholderTextColor="#9ca3af" value={item.name} onChangeText={(v) => updateLineItem(item.id, "name", v)} />
-                    <TextInput style={{ width: 50, textAlign: "center", color: "#1f2937", fontSize: 14, borderWidth: 1, borderColor: "#f3f4f6", borderRadius: 8, paddingVertical: 6 }} placeholder="1" placeholderTextColor="#9ca3af" keyboardType="numeric" value={item.qty} onChangeText={(v) => updateLineItem(item.id, "qty", v)} />
-                    <TextInput style={{ width: 70, textAlign: "right", color: "#1f2937", fontSize: 14, borderWidth: 1, borderColor: "#f3f4f6", borderRadius: 8, paddingVertical: 6, paddingHorizontal: 6 }} placeholder="0.00" placeholderTextColor="#9ca3af" keyboardType="numeric" value={item.price} onChangeText={(v) => updateLineItem(item.id, "price", v)} />
-                    <TouchableOpacity onPress={() => removeLineItem(item.id)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: "#fef2f2", alignItems: "center", justifyContent: "center" }}>
-                      <Text style={{ color: "#f87171", fontSize: 18, lineHeight: 20 }}>×</Text>
-                    </TouchableOpacity>
+              {/* Added Items List */}
+              {tempItems.length > 0 && (
+                <View style={{ marginBottom: 16 }}>
+                  <Text style={{ color: "#374151", fontWeight: "600", fontSize: 14, marginBottom: 8 }}>Added Items</Text>
+                  <View style={{ backgroundColor: "#fff", borderRadius: 16, overflow: "hidden" }}>
+                    {tempItems.map((item, index) => (
+                      <View
+                        key={item.item_id}
+                        style={{
+                          padding: 16,
+                          borderBottomWidth: index < tempItems.length - 1 ? 1 : 0,
+                          borderBottomColor: "#f3f4f6",
+                        }}
+                      >
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                          <Text style={{ fontWeight: "600", color: "#1f2937", flex: 1 }}>{item.name}</Text>
+                          <TouchableOpacity onPress={() => handleRemoveTempItem(item.item_id)}>
+                            <Text style={{ color: "#ef4444", fontSize: 18 }}>×</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <Text style={{ fontSize: 12, color: "#6b7280" }}>
+                          Qty: {item.qty} · Price: LKR {item.price.toFixed(2)} · Discount: LKR {item.discount.toFixed(2)}
+                        </Text>
+                        <Text style={{ fontSize: 13, color: "#4338ca", fontWeight: "600", marginTop: 4 }}>
+                          Subtotal: LKR {item.subtotal.toFixed(2)}
+                        </Text>
+                      </View>
+                    ))}
                   </View>
-                ))}
-              </View>
-              <TouchableOpacity onPress={addLineItem} style={{ alignItems: "center", justifyContent: "center", paddingVertical: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#a5b4fc", borderRadius: 16, marginBottom: 16 }}>
-                <Text style={{ color: "#4f46e5", fontWeight: "600", fontSize: 14 }}>+ Add Line Item</Text>
-              </TouchableOpacity>
+                  <View style={{ backgroundColor: "#eef2ff", borderRadius: 12, padding: 12, marginTop: 8, flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={{ color: "#3730a3", fontWeight: "600" }}>Total</Text>
+                    <Text style={{ color: "#3730a3", fontWeight: "700", fontSize: 16 }}>LKR {total.toFixed(2)}</Text>
+                  </View>
+                </View>
+              )}
 
-              <View style={{ backgroundColor: "#eef2ff", borderRadius: 16, padding: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <Text style={{ color: "#3730a3", fontWeight: "500" }}>Total Amount</Text>
-                <Text style={{ color: "#3730a3", fontWeight: "700", fontSize: 20 }}>LKR {total.toFixed(2)}</Text>
+              {/* Add Item Section */}
+              <Text style={{ color: "#374151", fontWeight: "600", fontSize: 14, marginBottom: 12 }}>Add Item</Text>
+              <SelectField
+                label="Item *"
+                value={items.find((i) => i.id === currentItem.item_id)?.name || ""}
+                onSelect={(item) => setCurrentItem((prev) => ({ ...prev, item_id: item.id }))}
+                placeholder="Select an item"
+                options={items.map((i) => ({ id: i.id, location_name: i.name }))}
+              />
+              <View style={{ flexDirection: "row", gap: 12, marginBottom: 16 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: "#4b5563", fontSize: 13, fontWeight: "600", marginBottom: 8 }}>Quantity *</Text>
+                  <TextInput
+                    style={{
+                      backgroundColor: "#fff",
+                      borderWidth: 1,
+                      borderColor: "#e5e7eb",
+                      borderRadius: 16,
+                      paddingHorizontal: 16,
+                      paddingVertical: 14,
+                      color: "#1f2937",
+                      fontSize: 15,
+                    }}
+                    placeholder="0"
+                    placeholderTextColor="#9ca3af"
+                    keyboardType="numeric"
+                    value={currentItem.qty}
+                    onChangeText={(v) => setCurrentItem((prev) => ({ ...prev, qty: v }))}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: "#4b5563", fontSize: 13, fontWeight: "600", marginBottom: 8 }}>Discount (LKR)</Text>
+                  <TextInput
+                    style={{
+                      backgroundColor: "#fff",
+                      borderWidth: 1,
+                      borderColor: "#e5e7eb",
+                      borderRadius: 16,
+                      paddingHorizontal: 16,
+                      paddingVertical: 14,
+                      color: "#1f2937",
+                      fontSize: 15,
+                    }}
+                    placeholder="0.00"
+                    placeholderTextColor="#9ca3af"
+                    keyboardType="numeric"
+                    value={currentItem.discount}
+                    onChangeText={(v) => setCurrentItem((prev) => ({ ...prev, discount: v }))}
+                  />
+                </View>
               </View>
+              <TouchableOpacity
+                onPress={handleAddTempItem}
+                style={{
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingVertical: 12,
+                  borderWidth: 1,
+                  borderStyle: "dashed",
+                  borderColor: "#a5b4fc",
+                  borderRadius: 16,
+                  marginBottom: 16,
+                }}
+              >
+                <Text style={{ color: "#4f46e5", fontWeight: "600", fontSize: 14 }}>+ Add Item</Text>
+              </TouchableOpacity>
 
               <Field label="Notes (Optional)" value={notes} onChange={setNotes} placeholder="Any additional notes..." multiline />
 
               <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
-                <TouchableOpacity style={{ flex: 1, borderWidth: 1, borderColor: "#4f46e5", borderRadius: 16, paddingVertical: 14, alignItems: "center" }}>
+                <TouchableOpacity
+                  style={{ flex: 1, borderWidth: 1, borderColor: "#4f46e5", borderRadius: 16, paddingVertical: 14, alignItems: "center" }}
+                >
                   <Text style={{ color: "#4f46e5", fontWeight: "600", fontSize: 14 }}>🖨️ Print</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => { if (!customer) { Alert.alert("Validation", "Customer name is required."); return; } Alert.alert("Success", "Invoice saved!"); }} style={{ flex: 2, backgroundColor: "#4f46e5", borderRadius: 16, paddingVertical: 14, alignItems: "center" }}>
-                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>Save Invoice</Text>
+                <TouchableOpacity
+                  onPress={handleSaveInvoice}
+                  disabled={submitting || !selectedShopId || tempItems.length === 0}
+                  style={{
+                    flex: 2,
+                    backgroundColor: submitting || !selectedShopId || tempItems.length === 0 ? "#9ca3af" : "#4f46e5",
+                    borderRadius: 16,
+                    paddingVertical: 14,
+                    alignItems: "center",
+                  }}
+                >
+                  {submitting ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>Save Invoice</Text>
+                  )}
                 </TouchableOpacity>
               </View>
             </>
