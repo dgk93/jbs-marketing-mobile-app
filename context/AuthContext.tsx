@@ -41,23 +41,96 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
 });
 
-async function fetchAppUser(email: string): Promise<AppUser | null> {
+function stripJoinedUser(row: Record<string, unknown>): UserLocation {
+  const { users: _users, ...location } = row;
+  return location as UserLocation;
+}
+
+async function fetchAppUserWithLocations(
+  email: string
+): Promise<{ user: AppUser; locations: UserLocation[] } | null> {
+  // Join users → locations (FK: locations.user_id → users)
   const { data, error } = await supabase
+    .from('users')
+    .select(
+      `
+      *,
+      locations (
+        id,
+        location_name,
+        location_type,
+        mobile,
+        address,
+        created_at,
+        owner_name,
+        user_id
+      )
+    `
+    )
+    .eq('email', email)
+    .maybeSingle();
+
+  if (!error && data) {
+    const { locations, ...userFields } = data as AppUser & {
+      locations: UserLocation[] | UserLocation | null;
+    };
+    const normalizedLocations = Array.isArray(locations)
+      ? locations
+      : locations
+        ? [locations]
+        : [];
+
+    return {
+      user: userFields as AppUser,
+      locations: normalizedLocations,
+    };
+  }
+
+  if (error) {
+    console.error('users→locations join failed, trying locations→users:', error);
+  }
+
+  // Reverse join: locations with matching users.email
+  const { data: locationRows, error: joinError } = await supabase
+    .from('locations')
+    .select(
+      `
+      id,
+      location_name,
+      location_type,
+      mobile,
+      address,
+      created_at,
+      owner_name,
+      user_id,
+      users!inner ( id, email, user_id )
+    `
+    )
+    .eq('users.email', email);
+
+  if (joinError) {
+    console.error('locations→users join failed:', joinError);
+  }
+
+  const { data: userOnly, error: userError } = await supabase
     .from('users')
     .select('*')
     .eq('email', email)
-    .single();
-  if (error || !data) return null;
-  return data as AppUser;
-}
+    .maybeSingle();
 
-async function fetchUserLocation(userId: string): Promise<UserLocation[]> {
-  const { data, error } = await supabase
-    .from('locations')
-    .select('*')
-    .eq('user_id', userId);
-  if (error || !data) return [];
-  return data as UserLocation[];
+  if (userError || !userOnly) {
+    console.error('Error fetching user:', userError);
+    return null;
+  }
+
+  const locationsFromJoin = (locationRows || []).map((row) =>
+    stripJoinedUser(row as Record<string, unknown>)
+  );
+
+  return {
+    user: userOnly as AppUser,
+    locations: locationsFromJoin,
+  };
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -67,12 +140,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const loadUserData = async (email: string) => {
-    const appUser = await fetchAppUser(email);
-    if (appUser?.user_id) {
-      const locations = await fetchUserLocation(appUser.user_id);
-      setUserLocations(locations);
+    const result = await fetchAppUserWithLocations(email);
+    if (result) {
+      setUser(result.user);
+      setUserLocations(result.locations);
+    } else {
+      setUser(null);
+      setUserLocations([]);
     }
-    setUser(appUser);
   };
 
   useEffect(() => {

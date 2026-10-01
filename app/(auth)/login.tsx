@@ -12,6 +12,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Smartphone, Lock, Eye, EyeOff } from "lucide-react-native";
 import { supabase } from "../../lib/supabase";
 
 export default function LoginScreen() {
@@ -90,14 +91,14 @@ export default function LoginScreen() {
 
           {/* White card */}
           <View style={styles.card}>
-            <Text style={styles.welcomeTitle}>Welcome back 👋</Text>
+            <Text style={styles.welcomeTitle}>Welcome back</Text>
             <Text style={styles.welcomeSubtitle}>Sign in to manage your business</Text>
 
             {/* Mobile Number */}
             <View style={styles.fieldGroup}>
               <Text style={styles.label}>Mobile Number</Text>
               <View style={[styles.inputRow, errors.mobile ? styles.inputError : styles.inputNormal]}>
-                <Text style={styles.inputIcon}>📱</Text>
+                <Smartphone size={18} color="#6b7280" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="e.g. 0771234567"
@@ -118,7 +119,7 @@ export default function LoginScreen() {
             <View style={styles.fieldGroup}>
               <Text style={styles.label}>Password</Text>
               <View style={[styles.inputRow, errors.password ? styles.inputError : styles.inputNormal]}>
-                <Text style={styles.inputIcon}>🔒</Text>
+                <Lock size={18} color="#6b7280" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="Enter your password"
@@ -131,7 +132,11 @@ export default function LoginScreen() {
                   }}
                 />
                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
-                  <Text style={styles.inputIcon}>{showPassword ? "🙈" : "👁️"}</Text>
+                  {showPassword ? (
+                    <EyeOff size={18} color="#6b7280" />
+                  ) : (
+                    <Eye size={18} color="#6b7280" />
+                  )}
                 </TouchableOpacity>
               </View>
               {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
@@ -210,7 +215,7 @@ const styles = StyleSheet.create({
   },
   inputNormal: { borderColor: "#e5e7eb" },
   inputError: { borderColor: "#f87171" },
-  inputIcon: { fontSize: 18, marginRight: 10 },
+  inputIcon: { marginRight: 10 },
   input: { flex: 1, color: "#1f2937", fontSize: 15, paddingVertical: 14 },
   eyeBtn: { paddingLeft: 8, paddingVertical: 14 },
   errorText: { color: "#ef4444", fontSize: 12, marginTop: 6, marginLeft: 4 },

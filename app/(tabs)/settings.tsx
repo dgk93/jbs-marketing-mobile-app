@@ -1,38 +1,7 @@
 import React from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-} from "react-native";
+import { View, Text, TouchableOpacity, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
-
-const settingsGroups = [
-  {
-    title: "Account",
-    items: [
-      { icon: "👤", label: "Profile", sub: "Manage your account details" },
-      { icon: "🔒", label: "Change Password", sub: "Update your password" },
-    ],
-  },
-  {
-    title: "Printing",
-    items: [
-      { icon: "🖨️", label: "Bluetooth Printer", sub: "Connect & manage printers" },
-      { icon: "🧾", label: "Invoice Template", sub: "Customize print layout" },
-    ],
-  },
-  {
-    title: "App",
-    items: [
-      { icon: "🌐", label: "Language", sub: "English" },
-      { icon: "🌙", label: "Dark Mode", sub: "Off" },
-      { icon: "ℹ️", label: "About", sub: "JBS Marketing v1.0.0" },
-    ],
-  },
-];
 
 export default function SettingsScreen() {
   const { signOut, user } = useAuth();
@@ -48,71 +17,81 @@ export default function SettingsScreen() {
     ]);
   };
 
+  const displayName = user?.name?.trim() || "User";
+  const initials = displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+
   return (
-    <SafeAreaView className="flex-1 bg-surface">
-      <View className="bg-primary-700 px-6 pt-4 pb-10">
-        <Text className="text-white text-xl font-bold">Settings</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#f8fafc" }}>
+      <View style={{ backgroundColor: "#4338ca", paddingHorizontal: 24, paddingTop: 16, paddingBottom: 40 }}>
+        <Text style={{ color: "#fff", fontSize: 20, fontWeight: "700" }}>Settings</Text>
       </View>
 
-      <ScrollView
-        className="-mt-4"
-        contentContainerStyle={{ paddingBottom: 40 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Profile Card */}
-        <View className="mx-4 bg-card rounded-2xl shadow-sm p-4 flex-row items-center mb-4">
-          <View className="w-14 h-14 rounded-2xl bg-primary-100 items-center justify-center mr-4">
-            <Text className="text-primary-700 font-bold text-xl">JB</Text>
+      <View style={{ flex: 1, paddingHorizontal: 16, marginTop: -20 }}>
+        <View
+          style={{
+            backgroundColor: "#fff",
+            borderRadius: 24,
+            paddingVertical: 28,
+            paddingHorizontal: 24,
+            alignItems: "center",
+            shadowColor: "#1e1b4b",
+            shadowOpacity: 0.08,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 3,
+          }}
+        >
+          <View
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: 24,
+              backgroundColor: "#eef2ff",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: 16,
+            }}
+          >
+            <Text style={{ color: "#4338ca", fontWeight: "700", fontSize: 26 }}>{initials || "U"}</Text>
           </View>
-          <View className="flex-1">
-            <Text className="text-gray-800 font-bold text-base">JBS Admin</Text>
-            <Text className="text-gray-400 text-sm mt-0.5">
-              {user?.email ?? "admin@jbsmarketing.app"}
-            </Text>
-          </View>
-          <View className="bg-primary-50 px-3 py-1.5 rounded-xl">
-            <Text className="text-primary-700 text-xs font-semibold">Admin</Text>
-          </View>
+
+          <Text style={{ color: "#9ca3af", fontSize: 12, fontWeight: "600", letterSpacing: 0.6, textTransform: "uppercase" }}>
+            Signed in as
+          </Text>
+          <Text
+            style={{
+              color: "#111827",
+              fontSize: 22,
+              fontWeight: "700",
+              marginTop: 6,
+              textAlign: "center",
+            }}
+          >
+            {displayName}
+          </Text>
         </View>
 
-        {settingsGroups.map((group) => (
-          <View key={group.title} className="mx-4 mb-4">
-            <Text className="text-gray-400 text-xs font-semibold uppercase tracking-widest mb-2 ml-1">
-              {group.title}
-            </Text>
-            <View className="bg-card rounded-2xl shadow-sm overflow-hidden">
-              {group.items.map((item, i) => (
-                <TouchableOpacity
-                  key={item.label}
-                  className={`flex-row items-center px-4 py-4 ${
-                    i < group.items.length - 1 ? "border-b border-gray-50" : ""
-                  }`}
-                >
-                  <View className="w-9 h-9 rounded-xl bg-primary-50 items-center justify-center mr-3">
-                    <Text className="text-base">{item.icon}</Text>
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-gray-800 font-medium text-sm">
-                      {item.label}
-                    </Text>
-                    <Text className="text-gray-400 text-xs mt-0.5">{item.sub}</Text>
-                  </View>
-                  <Text className="text-gray-300 text-lg">›</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        ))}
-
-        {/* Logout */}
         <TouchableOpacity
           onPress={handleLogout}
-          className="mx-4 bg-red-50 rounded-2xl py-4 items-center flex-row justify-center"
+          activeOpacity={0.85}
+          style={{
+            marginTop: 20,
+            backgroundColor: "#fff",
+            borderRadius: 20,
+            paddingVertical: 16,
+            alignItems: "center",
+            borderWidth: 1,
+            borderColor: "#fecaca",
+          }}
         >
-          <Text className="text-lg mr-2">🚪</Text>
-          <Text className="text-red-500 font-semibold">Logout</Text>
+          <Text style={{ color: "#dc2626", fontWeight: "700", fontSize: 15 }}>Logout</Text>
         </TouchableOpacity>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }

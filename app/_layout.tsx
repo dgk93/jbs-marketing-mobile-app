@@ -6,7 +6,7 @@ import { ActivityIndicator, View } from "react-native";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 
 function RootLayoutNav() {
-  const { session, loading, user, userLocation } = useAuth();
+  const { session, loading } = useAuth();
 
   useEffect(() => {
     console.log("[App] RootLayoutNav mounted");
@@ -36,6 +36,8 @@ function RootLayoutNav() {
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="reports" />
+        <Stack.Screen name="new-customer" />
       </Stack>
     </>
   );

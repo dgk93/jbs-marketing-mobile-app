@@ -6,22 +6,30 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "Bluetooth is used to connect to your MTP-3 receipt printer.",
+        "NSBluetoothPeripheralUsageDescription": "Bluetooth is used to connect to your MTP-3 receipt printer."
+      },
+      "bundleIdentifier": "com.jbsmarketing.app"
     },
     "android": {
+      "package": "com.jbsmarketing.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -29,7 +37,32 @@
     "scheme": "jbsmarketing",
     "plugins": [
       "expo-router",
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      "expo-dev-client",
+      [
+        "react-native-thermal-printer-driver",
+        {
+          "bluetoothAlwaysPermission": "Bluetooth is used to connect to your MTP-3 receipt printer."
+        }
+      ],
+      "expo-status-bar",
+      "expo-system-ui",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      "@react-native-community/datetimepicker"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2ff798f1-4dbf-4005-a139-d99d9d5e6608"
+      }
+    }
   }
 }
